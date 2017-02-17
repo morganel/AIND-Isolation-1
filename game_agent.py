@@ -13,10 +13,14 @@ class Timeout(Exception):
     """Subclass base exception for code clarity."""
     pass
 
-def moves_score(game, player):
-    """The "Improved" evaluation function discussed in lecture that outputs a
-    score equal to the difference in the number of moves available to the
-    two players.
+def linear_combination_moves_score(game, player):
+    """Calculate a linear combination of the moves available to each player.
+    max_blanks represents the total number of cells on the board.
+    At the beginning of the game, "max_blanks-blanks" is small and "blanks" is high. A higher 
+    absolute coefficient is applied to the opponent's moves, which translates into a more aggressive style.
+
+    At the end of the game, blanks is lower and max_blanks-blanks is high. A higher coefficient is applied to 
+    the player's moves, which translates into a more defensive style.
 
     Parameters
     ----------
@@ -40,77 +44,155 @@ def moves_score(game, player):
     if game.is_winner(player):
         return float("inf")
 
+    max_blanks = game.width**2
     own_moves = len(game.get_legal_moves(player))
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
 
     blanks = len(game.get_blank_spaces())
 
-    return float((49-blanks)*own_moves - blanks*opp_moves) #50.95% #other way is not great! this is the one i tested 1000 times
+    return float((max_blanks-blanks)*own_moves - blanks*opp_moves) 
 
-def cutoff_heuristics(game, player):
+
+def linear_combination_moves_score_opposite(game, player):
+    """Calculate a linear combination of the moves available to each player.
+    max_blanks represents the total number of cells on the board.
+    At the beginning of the game, "max_blanks-blanks" is small and "blanks" is high. A higher 
+    absolute coefficient is applied to the opponent's moves, which translates into a more aggressive style.
+
+    At the end of the game, blanks is lower and max_blanks-blanks is high. A higher coefficient is applied to 
+    the player's moves, which translates into a more defensive style.
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    player : hashable
+        One of the objects registered by the game object as a valid player.
+        (i.e., `player` should be either game.__player_1__ or
+        game.__player_2__).
+
+    Returns
+    ----------
+    float
+        The heuristic value of the current game state
+    """
     if game.is_loser(player):
         return float("-inf")
 
     if game.is_winner(player):
         return float("inf")
 
-    white_spaces = len(game.get_blank_spaces())
+    max_blanks = game.width**2
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+
+    blanks = len(game.get_blank_spaces())
+
+    return float(blanks*own_moves - (max_blanks-blanks)*opp_moves) 
+
+def cutoff_heuristics(game, player):
+    """Changes the coefficients applied to player and its opponent based on where we are in the game.
+    At the beginning of the game (blanks > 35), be more aggressive: own_moves - 3 * opp_moves
+    At the end of the game, be more defensive: 3 * own_moves - opp_moves
+
+    Parameters
+    ----------
+    game : `isolation.Board`
+        An instance of `isolation.Board` encoding the current state of the
+        game (e.g., player locations and blocked cells).
+
+    player : hashable
+        One of the objects registered by the game object as a valid player.
+        (i.e., `player` should be either game.__player_1__ or
+        game.__player_2__).
+
+    Returns
+    ----------
+    float
+        The heuristic value of the current game state
+    """
+
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
+
+    blanks = len(game.get_blank_spaces())
 
     own_moves = len(game.get_legal_moves(player))
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
 
-    if white_spaces>35: #647 to 613 51.35%
+    if blanks > 35: 
         return  float(own_moves - 3 * opp_moves)
     else:
         return float(3 * own_moves - opp_moves)
 
-def divide_heuristics(game, player):
-    if game.is_loser(player):
-        return float("-inf")
+def moves_and_position(game, player):
+    """
+    Based on number of moves available and each player's distance to the center of the board.
+    10 * (own_moves - opp_moves) + (own_dist_x + own_dist_y) - (opp_dist_x + opp_dist_y)
+
+    Calculates the sum of the absolute number of squares from the player's position to the center of the board
+    along the x and y axis.
+    This heuristics puts a positive coefficient to the player's distance to center, pushing it towards the edges.
+    """
 
     if game.is_winner(player):
-        return float("inf")
+        return float('inf')
+
+    if game.is_loser(player):
+        return float('-inf')
+        
+    center = game.width/2
+    
+    own_position = game.get_player_location(player)
+    opp_position = game.get_player_location(game.get_opponent(player))
 
     own_moves = len(game.get_legal_moves(player))
     opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
 
-    if own_moves == 0:
-        return float("-inf")
+    own_dist_x = abs(center - own_position[0])
+    own_dist_y = abs(center - own_position[1])
 
-    if opp_moves == 0:
-        return float("inf")
+    opp_dist_x = abs(center - opp_position[0])
+    opp_dist_y = abs(center - opp_position[1])
 
-    if own_moves >= opp_moves:                  
-        return (own_moves / opp_moves) #+ prev_opp_moves - opp_moves
-    elif own_moves < opp_moves:
-        return - (opp_moves/ own_moves) #+ prev_opp_moves - opp_moves
+    return float(10 * (own_moves - opp_moves) + (own_dist_x + own_dist_y) - (opp_dist_x + opp_dist_y))
 
-def custom_score_three(game, player):
+def moves_and_position_opposite(game, player):
     """
-    
+    Based on number of moves available and each player's distance to the center of the board.
+    10 * (own_moves - opp_moves) - (own_dist_x + own_dist_y) + (opp_dist_x + opp_dist_y)
+
+    Calculates the sum of the absolute number of squares from the player's position to the center of the board
+    along the x and y axis.
+    This heuristics puts a negative coefficient to the player's distance to center, pushing it towards the center.
     """
+
     if game.is_winner(player):
         return float('inf')
+
     if game.is_loser(player):
         return float('-inf')
-    else:
-        num_open_positions = game.get_blank_spaces()
+        
+    center = game.width/2
+    
+    own_position = game.get_player_location(player)
+    opp_position = game.get_player_location(game.get_opponent(player))
 
-        width = game.width/2
-        position = game.get_player_location(player)
-        opp_position = game.get_player_location(game.get_opponent(player))
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
 
-        own_moves = len(game.get_legal_moves(player))
-        opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    own_dist_x = abs(center - own_position[0])
+    own_dist_y = abs(center - own_position[1])
 
-        position_width_weight = abs(width - position[0])
-        position_height_weight = abs(width - position[1])
+    opp_dist_x = abs(center - opp_position[0])
+    opp_dist_y = abs(center - opp_position[1])
 
-        opp_position_width_weight = abs(width - opp_position[0])
-        opp_position_width_height = abs(width - opp_position[1])
-
-        #return float(10*(own_moves - opp_moves) - position_width_weight - position_height_weight + opp_position_width_weight + opp_position_width_height)
-        return float(10*(own_moves - opp_moves) + position_width_weight + position_height_weight - opp_position_width_weight - opp_position_width_height)
+    return float(10*(own_moves - opp_moves) - (own_dist_x + own_dist_y) + (opp_dist_x + opp_dist_y))
         
 
 def custom_score(game, player):
@@ -136,7 +218,7 @@ def custom_score(game, player):
         The heuristic value of the current game state to the specified player.
     """
 
-    return moves_score(game, player) #custom_score_three
+    return moves_and_position(game, player)
 
 class CustomPlayer:
     """Game-playing agent that chooses a move using your evaluation function
@@ -176,9 +258,16 @@ class CustomPlayer:
         self.method = method
         self.time_left = None
         self.TIMER_THRESHOLD = timeout
-        self.cache = dict()
-        self.depths = dict()
-        self.depths2 = []
+
+    def get_search_function(self):
+        search_function = self.minimax
+        if self.method == 'alphabeta':
+            search_function = self.alphabeta
+        if self.method == 'negamax':
+            search_function = self.negamax
+        return search_function
+        
+
 
     def get_move(self, game, legal_moves, time_left):
         """Search for the best move from the available legal moves and return a
@@ -218,54 +307,35 @@ class CustomPlayer:
 
         self.time_left = time_left
 
-
         # Perform any required initializations, including selecting an initial
         # move from the game board (i.e., an opening book), or returning
         # immediately if there are no legal moves
 
+        m = (-1,-1)
+
         if len(legal_moves) == 0:
-            return (-1,-1)
+            return m
+
+        search_function = self.get_search_function()
 
         try:
             # The search method call (alpha beta or minimax) should happen in
             # here in order to avoid timeout. The try/except block will
             # automatically catch the exception raised by the search method
             # when the timer gets close to expiring
-            m = (-2,-2)
-            d = 0
-
-            if self.method == 'minimax':
-                if not self.iterative:
-                    d = self.search_depth
-                    v, m = self.minimax(game, depth = self.search_depth, maximizing_player=True)
-                else:
-                    d = 1
-                    v = 0
-                    while True: #abs(v) != float("Inf"):
-                        v, m = self.minimax(game, depth = d, maximizing_player=True)
-                        d = d + 1
-
-            if self.method == 'alphabeta':
-
-                if not self.iterative:
-                    d = self.search_depth
-                    v, m = self.alphabeta(game, depth = self.search_depth, alpha=float("-inf"), beta=float("inf"), maximizing_player=True)
-                else:
-                    d = 1
-                    v = 0
-                    while True: #abs(v) != float("Inf"):
-                        v, m = self.alphabeta(game, depth = d, alpha=float("-inf"), beta=float("inf"), maximizing_player=True)
-                        d = d + 1
-
+            
+            if not self.iterative:
+                v, m = search_function(game, depth = self.search_depth)
+            else:
+                v, d = 0, 0
+                while True: #abs(v) != float("Inf") not necessary since we can use all the time we have
+                    v, m = search_function(game, depth = d)
+                    d = d + 1
 
         except Timeout:
             # Handle any actions required at timeout, if necessary
-            if (m == (-1, -1) or m == (-2,-2)):
+            if (m == (-1, -1)):
                 m = legal_moves[random.randint(0, len(legal_moves) - 1)]
-
-        # Return the best move from the last completed search iteration
-        if m == (-2,-2): print('ISSUE WITH M')
-        self.depths2.append(d)
         return m
 
     def minimax(self, game, depth, maximizing_player=True):
@@ -307,23 +377,34 @@ class CustomPlayer:
         else:
             player_to_maximize = game.inactive_player
 
-        if (game.utility(player_to_maximize) != 0):
-            return maximizing_player * game.utility(player_to_maximize), bestMove
-
         if (depth == 0):
-            return maximizing_player * self.score(game, player_to_maximize), bestMove
+            return self.score(game, player_to_maximize), bestMove
 
-        bestValue = float("-Inf")
+        if game.utility(player_to_maximize) != 0.0:
+            return game.utility(player_to_maximize), bestMove   
+
         legalMoves = game.get_legal_moves(game.active_player)
         bestMove = legalMoves[0]
-        for m in legalMoves:
-            v, _ = self.minimax(game.forecast_move(m), depth - 1, -maximizing_player)
-            v = -v
-            if v > bestValue:
-                bestValue = v
-                bestMove = m
 
-        return bestValue, bestMove
+        if maximizing_player:
+            bestValue = float("-Inf")
+
+            for m in legalMoves:
+                v, _ = self.minimax(game.forecast_move(m), depth - 1, False)
+                if v > bestValue:
+                    bestValue = v
+                    bestMove = m
+            return bestValue, bestMove
+
+        else:
+            bestValue = float("Inf")
+
+            for m in legalMoves:
+                v, _ = self.minimax(game.forecast_move(m), depth - 1, True)
+                if v < bestValue:
+                    bestValue = v
+                    bestMove = m
+            return bestValue, bestMove
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf"), maximizing_player = True):
         if self.time_left() < self.TIMER_THRESHOLD:
@@ -373,3 +454,60 @@ class CustomPlayer:
                 if beta <= alpha:
                     break # beta cut-off
             return v, bestMove
+    
+    def negamax(self, game, depth, maximizing_player=True):
+        """Implement the minimax search algorithm as described in the lectures.
+
+        Parameters
+        ----------
+        game : isolation.Board
+            An instance of the Isolation game `Board` class representing the
+            current game state
+
+        depth : int
+            Depth is an integer representing the maximum number of plies to
+            search in the game tree before aborting
+
+        maximizing_player : bool
+            Flag indicating whether the current search depth corresponds to a
+            maximizing layer (True) or a minimizing layer (False)
+
+        current_depth : int
+            current_depth is an integer representing the number of plies
+
+        Returns
+        ----------
+        float
+            The score for the current search branch
+
+        tuple(int, int)
+            The best move for the current branch; (-1, -1) for no legal moves
+        """
+        
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise Timeout()
+
+        bestMove = (-1,-1)
+
+        if maximizing_player == 1:
+            player_to_maximize = game.active_player
+        else:
+            player_to_maximize = game.inactive_player
+
+        if (game.utility(player_to_maximize) != 0):
+            return maximizing_player * game.utility(player_to_maximize), bestMove
+
+        if (depth == 0):
+            return maximizing_player * self.score(game, player_to_maximize), bestMove
+
+        bestValue = float("-Inf")
+        legalMoves = game.get_legal_moves(game.active_player)
+        bestMove = legalMoves[0]
+        for m in legalMoves:
+            v, _ = self.negamax(game.forecast_move(m), depth - 1, -maximizing_player)
+            v = -v
+            if v > bestValue:
+                bestValue = v
+                bestMove = m
+
+        return bestValue, bestMove
